@@ -1,0 +1,276 @@
+<!DOCTYPE html>
+<html lang="en">
+  <head>
+    <meta charset="UTF-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+    <title>Cloud File Manager | S3 Storage</title>
+    <script src="https://cdn.tailwindcss.com"></script>
+    <link
+      rel="stylesheet"
+      href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.4.0/css/all.min.css"
+    />
+    <style>
+      @keyframes progress {
+        from {
+          width: 0%;
+        }
+        to {
+          width: 100%;
+        }
+      }
+
+      .progress-bar {
+        animation: progress 2s ease-in-out;
+      }
+
+      .file-card:hover .file-actions {
+        opacity: 1;
+      }
+
+      .toast {
+        transition: all 0.3s ease;
+        right: -300px;
+      }
+
+      .toast.show {
+        right: 20px;
+      }
+    </style>
+  </head>
+  <body class="bg-gray-100">
+    <div class="container mx-auto px-4 py-8">
+      <!-- Header -->
+      <div class="text-center mb-12">
+        <h1 class="text-4xl font-bold text-blue-600 mb-2">
+          <i class="fa-solid fa-cloud-arrow-up mr-2"></i>Cloud Storage
+        </h1>
+        <p class="text-gray-600">Upload dan kelola file Anda di AWS S3 Cloud</p>
+      </div>
+
+      <!-- Upload Area -->
+      <div class="max-w-3xl mx-auto mb-12">
+        <div
+          id="drop-zone"
+          class="border-4 border-dashed border-blue-200 rounded-2xl p-8 text-center bg-white hover:border-blue-400 transition-colors cursor-pointer"
+        >
+          <div class="text-blue-400 text-6xl mb-4">
+            <i class="fa-solid fa-cloud-arrow-up"></i>
+          </div>
+          <h3 class="text-xl font-semibold mb-2">
+            Seret file ke sini atau klik untuk mengupload
+          </h3>
+          <p class="text-gray-500 text-sm">Maksimum ukuran file: 50MB</p>
+          <input type="file" id="fileInput" class="hidden" />
+
+          <!-- Progress Bar -->
+          <div id="progressContainer" class="mt-6 hidden">
+            <div class="h-3 bg-gray-200 rounded-full overflow-hidden">
+              <div
+                id="progressBar"
+                class="progress-bar h-full bg-blue-500"
+              ></div>
+            </div>
+            <p class="text-sm text-gray-600 mt-2" id="statusText">
+              Mengupload...
+            </p>
+          </div>
+        </div>
+      </div>
+
+      <!-- File List -->
+      <div class="bg-white rounded-xl shadow-lg p-6">
+        <h2 class="text-xl font-semibold mb-4 flex items-center">
+          <i class="fa-solid fa-folder-open mr-2 text-blue-500"></i>
+          File Anda
+          <button
+            onclick="loadFiles()"
+            class="ml-2 text-blue-500 hover:text-blue-600"
+          >
+            <i class="fa-solid fa-arrows-rotate"></i>
+          </button>
+        </h2>
+
+        <div id="loading" class="text-center py-8">
+          <i class="fa-solid fa-spinner fa-spin text-3xl text-gray-400"></i>
+        </div>
+
+        <div
+          id="fileList"
+          class="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-4"
+        ></div>
+      </div>
+    </div>
+
+    <!-- Toast Notification -->
+    <div
+      id="toast"
+      class="toast fixed bottom-5 bg-white shadow-lg rounded-lg p-4 w-80 flex items-center"
+    >
+      <div class="toast-icon mr-3 text-2xl"></div>
+      <div class="toast-message flex-1"></div>
+    </div>
+
+    <script>
+      // Drag and Drop Handlers
+      const dropZone = document.getElementById("drop-zone");
+      const fileInput = document.getElementById("fileInput");
+
+      dropZone.addEventListener("click", () => fileInput.click());
+
+      dropZone.addEventListener("dragover", (e) => {
+        e.preventDefault();
+        dropZone.classList.add("border-blue-400", "bg-blue-50");
+      });
+
+      dropZone.addEventListener("dragleave", () => {
+        dropZone.classList.remove("border-blue-400", "bg-blue-50");
+      });
+
+      dropZone.addEventListener("drop", (e) => {
+        e.preventDefault();
+        dropZone.classList.remove("border-blue-400", "bg-blue-50");
+        const files = e.dataTransfer.files;
+        if (files.length) handleFileUpload(files[0]);
+      });
+
+      fileInput.addEventListener("change", (e) => {
+        if (e.target.files.length) handleFileUpload(e.target.files[0]);
+      });
+
+      // Upload Handler
+      async function handleFileUpload(file) {
+        const formData = new FormData();
+        formData.append("file", file);
+
+        try {
+          document
+            .getElementById("progressContainer")
+            .classList.remove("hidden");
+
+          const response = await fetch("/upload", {
+            method: "POST",
+            body: formData,
+          });
+
+          if (!response.ok) throw new Error(await response.text());
+
+          showToast("File berhasil diupload!", "success");
+          loadFiles();
+        } catch (err) {
+          showToast(err.message, "error");
+        } finally {
+          document.getElementById("progressContainer").classList.add("hidden");
+        }
+      }
+
+      // File List Template
+      function createFileCard(file) {
+        return `
+                <div class="file-card relative group border rounded-lg p-4 hover:bg-gray-50 transition-colors">
+                    <div class="flex items-start">
+                        <div class="text-blue-500 text-2xl mr-3">
+                            ${getFileIcon(file.name)}
+                        </div>
+                        <div class="flex-1">
+                            <div class="font-medium truncate">${file.name}</div>
+                            <div class="text-sm text-gray-500">${formatFileSize(
+                              file.size
+                            )}</div>
+                            <div class="text-xs text-gray-400 mt-1">${new Date(
+                              file.lastModified
+                            ).toLocaleDateString()}</div>
+                        </div>
+                    </div>
+                    <div class="file-actions absolute top-2 right-2 opacity-0 transition-opacity">
+                        <a href="${
+                          file.url
+                        }" target="_blank" class="text-blue-500 hover:text-blue-600 p-2">
+                            <i class="fa-solid fa-download"></i>
+                        </a>
+                    </div>
+                </div>
+            `;
+      }
+
+      // Helper Functions
+      function getFileIcon(filename) {
+        const ext = filename.split(".").pop().toLowerCase();
+        const icons = {
+          pdf: "file-pdf",
+          doc: "file-word",
+          docx: "file-word",
+          xls: "file-excel",
+          xlsx: "file-excel",
+          ppt: "file-powerpoint",
+          pptx: "file-powerpoint",
+          zip: "file-zipper",
+          jpg: "file-image",
+          jpeg: "file-image",
+          png: "file-image",
+          mp4: "file-video",
+          mp3: "file-audio",
+        };
+        return `<i class="fa-regular ${
+          icons[ext] ? "fa-" + icons[ext] : "fa-file"
+        }"></i>`;
+      }
+
+      function formatFileSize(bytes) {
+        if (bytes === 0) return "0 Bytes";
+        const k = 1024;
+        const sizes = ["Bytes", "KB", "MB", "GB"];
+        const i = Math.floor(Math.log(bytes) / Math.log(k));
+        return parseFloat((bytes / Math.pow(k, i)).toFixed(2)) + " " + sizes[i];
+      }
+
+      // Toast Notification
+      function showToast(message, type = "info") {
+        const toast = document.getElementById("toast");
+        const iconMap = {
+          success: { icon: "fa-circle-check", color: "text-green-500" },
+          error: { icon: "fa-circle-xmark", color: "text-red-500" },
+          info: { icon: "fa-circle-info", color: "text-blue-500" },
+        };
+
+        toast.querySelector(
+          ".toast-icon"
+        ).className = `toast-icon ${iconMap[type].color} ${iconMap[type].icon}`;
+        toast.querySelector(".toast-message").textContent = message;
+
+        toast.classList.add("show");
+        setTimeout(() => toast.classList.remove("show"), 3000);
+      }
+
+      // Load Files
+      async function loadFiles() {
+        try {
+          document.getElementById("loading").classList.remove("hidden");
+          document.getElementById("fileList").innerHTML = "";
+
+          const response = await fetch("/files");
+          const files = await response.json();
+
+          if (files.length === 0) {
+            document.getElementById("fileList").innerHTML = `
+                        <div class="col-span-full text-center py-8 text-gray-500">
+                            <i class="fa-regular fa-folder-open text-3xl mb-2"></i>
+                            <p>Belum ada file</p>
+                        </div>
+                    `;
+          } else {
+            document.getElementById("fileList").innerHTML = files
+              .map(createFileCard)
+              .join("");
+          }
+        } catch (err) {
+          showToast("Gagal memuat daftar file", "error");
+        } finally {
+          document.getElementById("loading").classList.add("hidden");
+        }
+      }
+
+      // Initial Load
+      loadFiles();
+    </script>
+  </body>
+</html>
