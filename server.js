@@ -76,5 +76,23 @@ app.get("/file-details", async (req, res) => {
   }
 });
 
+// Delete file endpoint
+app.delete("/files/:filename", async (req, res) => {
+  const params = {
+    Bucket: process.env.S3_BUCKET_NAME,
+    Key: req.params.filename,
+  };
+
+  try {
+    await s3.deleteObject(params).promise();
+    res
+      .status(200)
+      .json({ success: true, message: "File deleted successfully" });
+  } catch (err) {
+    console.error("Delete error:", err);
+    res.status(500).json({ success: false, message: err.message });
+  }
+});
+
 const PORT = process.env.PORT || 3000;
 app.listen(PORT, () => console.log(`Server running on port ${PORT}`));
