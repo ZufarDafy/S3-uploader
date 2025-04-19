@@ -21,7 +21,7 @@ jobs:
       - name: Deploy to EC2
         run: |
           ssh -o StrictHostKeyChecking=no ubuntu@${{ secrets.ECS_IP }} << 'EOF'
-            cd /home/ubuntu
+            cd /home/ubuntu/github/S3-uploader
             git pull origin main
             sudo systemctl restart nginx
           EOF
